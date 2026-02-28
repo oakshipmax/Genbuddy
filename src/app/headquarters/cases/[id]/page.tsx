@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { StatusBadge } from "@/components/cases/StatusBadge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { ChatWindow } from "@/components/chat/ChatWindow";
 import type { CaseStatus } from "@prisma/client";
 
 type CaseDetail = {
@@ -33,6 +35,7 @@ const nextStatusMap: Partial<Record<CaseStatus, { status: CaseStatus; label: str
 export default function HeadquartersCaseDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const [caseItem, setCaseItem] = useState<CaseDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -159,6 +162,21 @@ export default function HeadquartersCaseDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* チャット */}
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-0">
+            <CardTitle className="text-base">チャット</CardTitle>
+          </CardHeader>
+          <div className="h-[400px] flex flex-col">
+            {session?.user?.dbId && (
+              <ChatWindow
+                caseId={caseItem.id}
+                currentUserId={session.user.dbId}
+              />
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   );

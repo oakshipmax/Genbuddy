@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { StatusBadge } from "@/components/cases/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChatWindow } from "@/components/chat/ChatWindow";
 import type { CaseStatus } from "@prisma/client";
 
 type CaseDetail = {
@@ -20,6 +22,7 @@ type CaseDetail = {
 export default function HandymanCaseDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session } = useSession();
   const [caseItem, setCaseItem] = useState<CaseDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -104,6 +107,21 @@ export default function HandymanCaseDetailPage() {
             この案件は{caseItem.status === "COMPLETED" ? "完了" : "キャンセル"}済みです
           </p>
         )}
+
+        {/* チャット */}
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-0">
+            <CardTitle className="text-base">本部とのチャット</CardTitle>
+          </CardHeader>
+          <div className="h-[400px] flex flex-col">
+            {session?.user?.dbId && (
+              <ChatWindow
+                caseId={caseItem.id}
+                currentUserId={session.user.dbId}
+              />
+            )}
+          </div>
+        </Card>
       </div>
     </div>
   );
