@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendLineMessage, lineMessages } from "@/lib/line";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -68,6 +69,24 @@ export async function POST(
         sender: { select: { id: true, name: true, role: true } },
       },
     });
+
+    // LINE通知：相手方に新着メッセージを通知
+    const caseItem = await prisma.case.findUnique({
+      where: { id: caseId },
+      include: {
+        handyman: { select: { lineUserId: true } },
+      },
+    });
+
+    if (caseItem) {
+      // 本部が送信 → 便利屋に通知
+      if (session.user.role === "HEADQUARTERS" && caseItem.handyman?.lineUserId) {
+        await sendLineMessage(
+          caseItem.handyman.lineUserId,
+          lineMessages.newMessage(caseItem.title, message.sender.name)
+        );
+      }
+    }
 
     return NextResponse.json(message, { status: 201 });
   } catch {

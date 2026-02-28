@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendLineMessage, lineMessages } from "@/lib/line";
 
 // 案件詳細取得
 export async function GET(
@@ -81,7 +82,32 @@ export async function PATCH(
         ...(handymanId !== undefined && { handymanId }),
         ...(status === "COMPLETED" && { completedAt: new Date() }),
       },
+      include: {
+        handyman: { select: { lineUserId: true } },
+      },
     });
+
+    // LINE通知：担当便利屋にステータス変更を通知
+    if (status && updated.handyman?.lineUserId) {
+      await sendLineMessage(
+        updated.handyman.lineUserId,
+        lineMessages.caseStatusChanged(updated.title, status)
+      );
+    }
+
+    // LINE通知：新規アサイン時（担当者が変わった場合）
+    if (handymanId && handymanId !== existing.handymanId) {
+      const newHandyman = await prisma.user.findUnique({
+        where: { id: handymanId },
+        select: { lineUserId: true },
+      });
+      if (newHandyman?.lineUserId) {
+        await sendLineMessage(
+          newHandyman.lineUserId,
+          lineMessages.caseAssigned(existing.title)
+        );
+      }
+    }
 
     return NextResponse.json(updated);
   } catch {
