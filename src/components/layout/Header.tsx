@@ -10,6 +10,7 @@ type NavItem = { label: string; href: string };
 const hqNav: NavItem[] = [
   { label: "ダッシュボード", href: "/headquarters/dashboard" },
   { label: "案件管理", href: "/headquarters/cases" },
+  { label: "請求書・見積書", href: "/headquarters/invoices" },
 ];
 
 const handymanNav: NavItem[] = [
