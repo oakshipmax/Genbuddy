@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ユーザーロール
+enum Role {
+  HEADQUARTERS  // 本部
+  HANDYMAN      // 便利屋
+  END_USER      // エンドユーザー
+}
+
+// 案件ステータス
+enum CaseStatus {
+  PENDING     // 受付待ち
+  ASSIGNED    // 担当者決定
+  IN_PROGRESS // 対応中
+  COMPLETED   // 完了
+  CANCELLED   // キャンセル
+}
+
+// 請求書ステータス
+enum InvoiceStatus {
+  DRAFT     // 下書き
+  SENT      // 送付済み
+  PAID      // 支払済み
+  CANCELLED // キャンセル
+}
+
+// ユーザー
+model User {
+  id            String    @id @default(cuid())
+  role          Role
+  name          String
+  email         String?   @unique  // 本部のみ
+  cognitoId     String?   @unique  // 本部のみ（Cognito）
+  lineUserId    String?   @unique  // 便利屋・エンドユーザー（LINE）
+  phone         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // リレーション
+  handymanCases   Case[]    @relation("HandymanCases")  // 担当案件（便利屋）
+  requestedCases  Case[]    @relation("RequestedCases") // 依頼案件（エンドユーザー）
+  sentMessages    Message[] @relation("SentMessages")
+  invoices        Invoice[]
+
+  @@map("users")
+}
+
+// 案件
+model Case {
+  id          String     @id @default(cuid())
+  title       String
+  description String
+  status      CaseStatus @default(PENDING)
+  address     String?
+  scheduledAt DateTime?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // リレーション
+  handyman    User?    @relation("HandymanCases", fields: [handymanId], references: [id])
+  handymanId  String?
+  client      User?    @relation("RequestedCases", fields: [clientId], references: [id])
+  clientId    String?
+  messages    Message[]
+  invoices    Invoice[]
+
+  @@map("cases")
+}
+
+// チャットメッセージ
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+
+  // リレーション
+  sender    User   @relation("SentMessages", fields: [senderId], references: [id])
+  senderId  String
+  case      Case   @relation(fields: [caseId], references: [id])
+  caseId    String
+
+  @@map("messages")
+}
+
+// 請求書・見積書
+model Invoice {
+  id          String        @id @default(cuid())
+  type        String        // "INVOICE" | "ESTIMATE"
+  status      InvoiceStatus @default(DRAFT)
+  totalAmount Int           // 金額（円）
+  note        String?
+  issuedAt    DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // リレーション
+  case        Case    @relation(fields: [caseId], references: [id])
+  caseId      String
+  issuedBy    User    @relation(fields: [issuedById], references: [id])
+  issuedById  String
+  items       InvoiceItem[]
+
+  @@map("invoices")
+}
+
+// 請求書明細
+model InvoiceItem {
+  id        String  @id @default(cuid())
+  name      String
+  quantity  Int
+  unitPrice Int     // 単価（円）
+  amount    Int     // 小計（円）
+
+  // リレーション
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId String
+
+  @@map("invoice_items")
+}
