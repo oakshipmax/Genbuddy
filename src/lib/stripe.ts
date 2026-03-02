@@ -23,7 +23,7 @@ export function getStripeClient(): Stripe | null {
     console.warn("[Stripe] STRIPE_SECRET_KEY が未設定のためStripeをスキップします");
     return null;
   }
-  return new Stripe(secretKey, { apiVersion: "2025-01-27.acacia" });
+  return new Stripe(secretKey, { apiVersion: "2026-02-25.clover" });
 }
 
 /**
