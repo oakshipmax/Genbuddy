@@ -1,23 +1,44 @@
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { NextResponse } from "next/server";
 
-export default auth((req) => {
+export default async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const session = req.auth;
 
-  // 未ログインユーザーをloginページへリダイレクト
-  const isPublicPath = pathname.startsWith("/login") || pathname.startsWith("/api/auth");
-  if (!session && !isPublicPath) {
-    return NextResponse.redirect(new URL("/login", req.url));
+  const isPublicPath =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/stripe/webhook") ||
+    pathname.startsWith("/payment") ||
+    pathname.startsWith("/liff") ||
+    pathname.startsWith("/api/liff");
+
+  // 公開パスはそのまま通す
+  if (isPublicPath) {
+    return NextResponse.next();
   }
 
-  // ログイン済みユーザーがloginページにアクセスしたらダッシュボードへ
-  if (session && pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
-  }
+  try {
+    const session = await auth();
 
-  return NextResponse.next();
-});
+    // 未ログインはloginへ
+    if (!session) {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+
+    // ログイン済みでloginページにアクセスしたらダッシュボードへ
+    if (pathname === "/login") {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+
+    return NextResponse.next();
+  } catch {
+    // 認証設定が未完了の場合はloginページへ
+    if (pathname !== "/login") {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+    return NextResponse.next();
+  }
+}
 
 export const config = {
   matcher: [

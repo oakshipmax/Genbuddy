@@ -55,6 +55,13 @@ export default function LoginPage() {
         <p className="text-gray-500 mt-1 text-sm">便利屋業務管理システム</p>
       </div>
 
+      {/* 設定中バナー（キー未設定時） */}
+      {process.env.NODE_ENV === "production" && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-sm text-yellow-700 text-center">
+          現在システム設定中です。しばらくお待ちください。
+        </div>
+      )}
+
       {/* タブ切り替え */}
       <div className="flex rounded-lg bg-gray-200 p-1 mb-4">
         <button

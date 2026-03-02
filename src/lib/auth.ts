@@ -4,26 +4,38 @@ import LINE from "next-auth/providers/line";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [
-    // 本部ログイン：Amazon Cognito（メール/パスワード）
+// キーが設定済みのプロバイダーのみ追加（未設定時はスキップ）
+const providers = [];
+
+if (
+  process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID &&
+  process.env.COGNITO_CLIENT_SECRET &&
+  process.env.COGNITO_ISSUER
+) {
+  providers.push(
     Cognito({
-      clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID ?? "",
-      clientSecret: process.env.COGNITO_CLIENT_SECRET ?? "",
-      issuer: process.env.COGNITO_ISSUER ?? "",
-    }),
-    // 便利屋・エンドユーザーログイン：LINE
+      clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID,
+      clientSecret: process.env.COGNITO_CLIENT_SECRET,
+      issuer: process.env.COGNITO_ISSUER,
+    })
+  );
+}
+
+if (process.env.LINE_CHANNEL_ID && process.env.LINE_CHANNEL_SECRET) {
+  providers.push(
     LINE({
-      clientId: process.env.LINE_CHANNEL_ID ?? "",
-      clientSecret: process.env.LINE_CHANNEL_SECRET ?? "",
-    }),
-  ],
+      clientId: process.env.LINE_CHANNEL_ID,
+      clientSecret: process.env.LINE_CHANNEL_SECRET,
+    })
+  );
+}
+
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  providers,
 
   callbacks: {
-    // JWTにロールを追加
-    async jwt({ token, account, profile }) {
-      if (account && profile) {
-        // DBからユーザー情報を取得してロールをトークンに埋め込む
+    async jwt({ token, account }) {
+      if (account) {
         let user = null;
 
         if (account.provider === "cognito") {
@@ -31,7 +43,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             where: { cognitoId: token.sub },
           });
           if (!user) {
-            // 初回ログイン時はHEADQUARTERSとして登録
             user = await prisma.user.create({
               data: {
                 cognitoId: token.sub!,
@@ -48,7 +59,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             where: { lineUserId: token.sub },
           });
           if (!user) {
-            // 初回ログイン時はHANDYMANとして登録（後で変更可能）
             user = await prisma.user.create({
               data: {
                 lineUserId: token.sub!,
@@ -67,7 +77,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return token;
     },
 
-    // セッションにロールを追加
     async session({ session, token }) {
       if (token) {
         session.user.role = token.role as Role;
@@ -81,4 +90,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     signIn: "/login",
     error: "/login",
   },
+
+  secret: process.env.AUTH_SECRET,
 });
