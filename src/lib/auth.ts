@@ -6,20 +6,6 @@ import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
 import authConfig from "./auth.config";
 
-/**
- * 本番環境でAUTH_URLがlocalhostになっている場合のフォールバック。
- * AmplifyのAUTH_URL環境変数を正しく設定することが本来の対処法。
- *   正しい値: https://main.d14eim0s9aym4u.amplifyapp.com
- *   または: AUTH_URL削除（trustHost: true があれば自動検出）
- */
-if (
-  process.env.NODE_ENV === "production" &&
-  process.env.NEXT_PUBLIC_APP_URL &&
-  (!process.env.AUTH_URL || process.env.AUTH_URL.includes("localhost"))
-) {
-  process.env.AUTH_URL = process.env.NEXT_PUBLIC_APP_URL;
-}
-
 // キーが設定済みのプロバイダーのみ追加（未設定時はスキップ）
 const providers: Provider[] = [];
 

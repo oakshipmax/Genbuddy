@@ -1,29 +1,17 @@
 import type { NextAuthConfig } from "next-auth";
 
-/**
- * 本番環境でAUTH_URLがlocalhostになっている場合のフォールバック。
- * auth.config.ts はミドルウェア（Edge runtime）でも読み込まれるため、
- * auth.ts と同じ対策をここにも記載する。
- *
- * 【正しい対処法】AmplifyのAUTH_URL環境変数を変更または削除する:
- *   変更: AUTH_URL=https://main.d14eim0s9aym4u.amplifyapp.com
- *   削除: trustHost: true があるので不要
- */
-if (
-  process.env.NODE_ENV === "production" &&
-  process.env.NEXT_PUBLIC_APP_URL &&
-  (!process.env.AUTH_URL || process.env.AUTH_URL.includes("localhost"))
-) {
-  process.env.AUTH_URL = process.env.NEXT_PUBLIC_APP_URL;
-}
+const isProduction = process.env.NODE_ENV === "production";
 
 /**
  * Edge互換設定（Prisma不使用・Node.jsモジュール不使用）
- * ミドルウェアでのセッション確認専用。
- * 完全な設定は auth.ts を参照。
+ * ミドルウェアでのセッション確認専用。完全な設定は auth.ts を参照。
+ *
+ * 【重要】Cookie名を明示することで、Node.js（サインイン）と
+ * Edge runtime（ミドルウェア）でCookie名が必ず一致するようにする。
+ * process.env.AUTH_URL の値に依存しない設計。
  */
 const authConfig: NextAuthConfig = {
-  providers: [], // ミドルウェアではsign-inしないので空でOK
+  providers: [],
 
   pages: {
     signIn: "/login",
@@ -34,6 +22,21 @@ const authConfig: NextAuthConfig = {
 
   // Amplifyなど本番環境でのホスト信頼設定（必須）
   trustHost: true,
+
+  // Cookie名を環境ごとに明示（AUTH_URLの値に依存しないようにする）
+  cookies: {
+    sessionToken: {
+      name: isProduction
+        ? "__Secure-authjs.session-token"
+        : "authjs.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isProduction,
+      },
+    },
+  },
 };
 
 export default authConfig;
