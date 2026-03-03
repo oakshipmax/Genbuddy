@@ -15,7 +15,10 @@ function StatCard({ label, value, color, href }: StatCardProps) {
   const content = (
     <div className={`bg-white rounded-xl border-l-4 ${color} p-4 shadow-sm`}>
       <p className="text-sm text-gray-500">{label}</p>
-      <p className="text-3xl font-bold text-gray-900 mt-1">{value}<span className="text-base font-normal text-gray-400 ml-1">件</span></p>
+      <p className="text-3xl font-bold text-gray-900 mt-1">
+        {value}
+        <span className="text-base font-normal text-gray-400 ml-1">件</span>
+      </p>
     </div>
   );
   return href ? <Link href={href}>{content}</Link> : content;
@@ -30,22 +33,34 @@ export default async function HeadquartersDashboardPage() {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const [pending, assigned, inProgress, completedToday, total, recentCases] =
-    await Promise.all([
-      prisma.case.count({ where: { status: "PENDING" } }),
-      prisma.case.count({ where: { status: "ASSIGNED" } }),
-      prisma.case.count({ where: { status: "IN_PROGRESS" } }),
-      prisma.case.count({
-        where: { status: "COMPLETED", completedAt: { gte: todayStart } },
-      }),
-      prisma.case.count({ where: { status: { not: "CANCELLED" } } }),
-      prisma.case.findMany({
-        take: 5,
-        orderBy: { createdAt: "desc" },
-        where: { status: { not: "CANCELLED" } },
-        include: { handyman: { select: { name: true } } },
-      }),
-    ]);
+  // DB接続エラー時はフォールバック表示
+  let stats = { pending: 0, assigned: 0, inProgress: 0, completedToday: 0, total: 0 };
+  let recentCases: Awaited<ReturnType<typeof prisma.case.findMany>> = [];
+  let dbError = false;
+
+  try {
+    const [pending, assigned, inProgress, completedToday, total, cases] =
+      await Promise.all([
+        prisma.case.count({ where: { status: "PENDING" } }),
+        prisma.case.count({ where: { status: "ASSIGNED" } }),
+        prisma.case.count({ where: { status: "IN_PROGRESS" } }),
+        prisma.case.count({
+          where: { status: "COMPLETED", completedAt: { gte: todayStart } },
+        }),
+        prisma.case.count({ where: { status: { not: "CANCELLED" } } }),
+        prisma.case.findMany({
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          where: { status: { not: "CANCELLED" } },
+          include: { handyman: { select: { name: true } } },
+        }),
+      ]);
+    stats = { pending, assigned, inProgress, completedToday, total };
+    recentCases = cases;
+  } catch (error) {
+    console.error("[Dashboard] DB query error:", error);
+    dbError = true;
+  }
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
@@ -62,29 +77,39 @@ export default async function HeadquartersDashboardPage() {
         </p>
       </div>
 
+      {/* DB接続エラー時のバナー */}
+      {dbError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-sm text-red-700">
+          <p className="font-medium">データベースへの接続に失敗しました</p>
+          <p className="mt-1 text-red-500">
+            しばらく待ってから再読み込みしてください。問題が続く場合はシステム管理者にお問い合わせください。
+          </p>
+        </div>
+      )}
+
       {/* 集計カード */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
         <StatCard
           label="受付待ち"
-          value={pending}
+          value={stats.pending}
           color="border-yellow-400"
           href="/headquarters/cases?status=PENDING"
         />
         <StatCard
           label="担当者決定"
-          value={assigned}
+          value={stats.assigned}
           color="border-blue-400"
           href="/headquarters/cases?status=ASSIGNED"
         />
         <StatCard
           label="対応中"
-          value={inProgress}
+          value={stats.inProgress}
           color="border-purple-400"
           href="/headquarters/cases?status=IN_PROGRESS"
         />
         <StatCard
           label="今日の完了"
-          value={completedToday}
+          value={stats.completedToday}
           color="border-green-400"
         />
       </div>
@@ -92,7 +117,10 @@ export default async function HeadquartersDashboardPage() {
       {/* 全体件数バナー */}
       <div className="bg-gray-900 text-white rounded-xl p-4 mb-6 flex items-center justify-between">
         <span className="text-sm font-medium">稼働中の案件（合計）</span>
-        <span className="text-2xl font-bold">{total}<span className="text-base font-normal ml-1 opacity-70">件</span></span>
+        <span className="text-2xl font-bold">
+          {stats.total}
+          <span className="text-base font-normal ml-1 opacity-70">件</span>
+        </span>
       </div>
 
       {/* 直近の案件 */}
@@ -109,7 +137,7 @@ export default async function HeadquartersDashboardPage() {
 
         {recentCases.length === 0 ? (
           <div className="text-center py-10 text-gray-400 bg-white rounded-xl border">
-            <p>案件がまだありません</p>
+            <p>{dbError ? "データを取得できませんでした" : "案件がまだありません"}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -117,10 +145,13 @@ export default async function HeadquartersDashboardPage() {
               <Link key={c.id} href={`/headquarters/cases/${c.id}`}>
                 <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 hover:border-gray-400 transition-colors flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate text-sm">{c.title}</p>
+                    <p className="font-medium text-gray-900 truncate text-sm">
+                      {c.title}
+                    </p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {c.handyman ? `担当: ${c.handyman.name}` : "担当者未定"}
-                      　{c.scheduledAt
+
+                      {c.scheduledAt
                         ? new Date(c.scheduledAt).toLocaleDateString("ja-JP")
                         : "日程未定"}
                     </p>

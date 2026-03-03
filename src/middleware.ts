@@ -1,9 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import authConfig from "@/lib/auth.config";
+import { NextResponse } from "next/server";
 
-export default async function middleware(req: NextRequest) {
+/**
+ * Auth.js v5 推奨パターン:
+ * - auth.config.ts（Edge互換・Prismaなし）ベースのNextAuthインスタンスを使用
+ * - Prismaや Node.js専用モジュールをEdgeランタイムに持ち込まない
+ */
+const { auth } = NextAuth(authConfig);
+
+export default auth((req) => {
   const { pathname } = req.nextUrl;
 
+  // 認証不要のパス
   const isPublicPath =
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
@@ -12,33 +21,17 @@ export default async function middleware(req: NextRequest) {
     pathname.startsWith("/liff") ||
     pathname.startsWith("/api/liff");
 
-  // 公開パスはそのまま通す
   if (isPublicPath) {
     return NextResponse.next();
   }
 
-  try {
-    const session = await auth();
-
-    // 未ログインはloginへ
-    if (!session) {
-      return NextResponse.redirect(new URL("/login", req.url));
-    }
-
-    // ログイン済みでloginページにアクセスしたらダッシュボードへ
-    if (pathname === "/login") {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-
-    return NextResponse.next();
-  } catch {
-    // 認証設定が未完了の場合はloginページへ
-    if (pathname !== "/login") {
-      return NextResponse.redirect(new URL("/login", req.url));
-    }
-    return NextResponse.next();
+  // 未ログインはloginへ
+  if (!req.auth) {
+    return NextResponse.redirect(new URL("/login", req.url));
   }
-}
+
+  return NextResponse.next();
+});
 
 export const config = {
   matcher: [

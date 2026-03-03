@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import LINE from "next-auth/providers/line";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
-import crypto from "crypto";
+import authConfig from "./auth.config";
 
 // キーが設定済みのプロバイダーのみ追加（未設定時はスキップ）
 const providers: Provider[] = [];
@@ -33,11 +33,25 @@ if (
         const email = credentials.email as string;
         const password = credentials.password as string;
 
-        // SECRET_HASH を計算（クライアントシークレットがある場合に必須）
-        const secretHash = crypto
-          .createHmac("sha256", clientSecret)
-          .update(email + clientId)
-          .digest("base64");
+        // SECRET_HASH を計算（Web Crypto API 使用 → Edge/Node.js 両対応）
+        const encoder = new TextEncoder();
+        const key = await globalThis.crypto.subtle.importKey(
+          "raw",
+          encoder.encode(clientSecret),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"]
+        );
+        const signature = await globalThis.crypto.subtle.sign(
+          "HMAC",
+          key,
+          encoder.encode(email + clientId)
+        );
+        const secretHash = btoa(
+          Array.from(new Uint8Array(signature))
+            .map((b) => String.fromCharCode(b))
+            .join("")
+        );
 
         try {
           // Cognito InitiateAuth（USER_PASSWORD_AUTH フロー）
@@ -125,10 +139,11 @@ if (process.env.LINE_CHANNEL_ID && process.env.LINE_CHANNEL_SECRET) {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers,
+  // Edge互換の基本設定（trustHost, pages, session strategy）を継承
+  ...authConfig,
 
-  // Amplifyなど本番環境でのホスト信頼設定（必須）
-  trustHost: true,
+  // サインイン時に使うフルプロバイダー（authorize()含む）で上書き
+  providers,
 
   callbacks: {
     async jwt({ token, account, user }) {
@@ -183,11 +198,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       }
       return session;
     },
-  },
-
-  pages: {
-    signIn: "/login",
-    error: "/login",
   },
 
   secret: process.env.AUTH_SECRET,
