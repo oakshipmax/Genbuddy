@@ -2,7 +2,12 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { StatusBadge } from "@/components/cases/StatusBadge";
+
+type CaseWithHandyman = Prisma.CaseGetPayload<{
+  include: { handyman: { select: { name: true } } };
+}>;
 
 type StatCardProps = {
   label: string;
@@ -35,7 +40,7 @@ export default async function HeadquartersDashboardPage() {
 
   // DB接続エラー時はフォールバック表示
   let stats = { pending: 0, assigned: 0, inProgress: 0, completedToday: 0, total: 0 };
-  let recentCases: Awaited<ReturnType<typeof prisma.case.findMany>> = [];
+  let recentCases: CaseWithHandyman[] = [];
   let dbError = false;
 
   try {
