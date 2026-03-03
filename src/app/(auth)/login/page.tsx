@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import {
 type Tab = "handyman" | "headquarters";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("handyman");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,13 +39,15 @@ export default function LoginPage() {
     const result = await signIn("cognito", {
       email,
       password,
-      callbackUrl: "/dashboard",
       redirect: false,
     });
 
     if (result?.error) {
       setError("メールアドレスまたはパスワードが正しくありません");
       setIsLoading(false);
+    } else {
+      // ログイン成功 → ダッシュボードへ
+      router.push("/dashboard");
     }
   };
 
