@@ -1,11 +1,12 @@
 import NextAuth from "next-auth";
+import type { Provider } from "next-auth/providers";
 import Cognito from "next-auth/providers/cognito";
 import LINE from "next-auth/providers/line";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
 
 // キーが設定済みのプロバイダーのみ追加（未設定時はスキップ）
-const providers = [];
+const providers: Provider[] = [];
 
 if (
   process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID &&
@@ -32,6 +33,9 @@ if (process.env.LINE_CHANNEL_ID && process.env.LINE_CHANNEL_SECRET) {
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers,
+
+  // Amplifyなど本番環境でのホスト信頼設定（必須）
+  trustHost: true,
 
   callbacks: {
     async jwt({ token, account }) {
