@@ -44,7 +44,8 @@ export default async function HeadquartersDashboardPage() {
   let dbError = false;
 
   try {
-    const [pending, assigned, inProgress, completedToday, total, cases] =
+    // count系は Promise.all でまとめて取得
+    const [pending, assigned, inProgress, completedToday, total] =
       await Promise.all([
         prisma.case.count({ where: { status: "PENDING" } }),
         prisma.case.count({ where: { status: "ASSIGNED" } }),
@@ -53,15 +54,16 @@ export default async function HeadquartersDashboardPage() {
           where: { status: "COMPLETED", completedAt: { gte: todayStart } },
         }),
         prisma.case.count({ where: { status: { not: "CANCELLED" } } }),
-        prisma.case.findMany({
-          take: 5,
-          orderBy: { createdAt: "desc" },
-          where: { status: { not: "CANCELLED" } },
-          include: { handyman: { select: { name: true } } },
-        }),
       ]);
     stats = { pending, assigned, inProgress, completedToday, total };
-    recentCases = cases;
+
+    // findMany はリレーション include のため別クエリ（型推論を明確化）
+    recentCases = await prisma.case.findMany({
+      take: 5,
+      orderBy: { createdAt: "desc" },
+      where: { status: { not: "CANCELLED" } },
+      include: { handyman: { select: { name: true } } },
+    });
   } catch (error) {
     console.error("[Dashboard] DB query error:", error);
     dbError = true;
