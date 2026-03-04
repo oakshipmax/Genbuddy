@@ -19,9 +19,14 @@ export default function GlobalError({
       <div className="text-center max-w-md">
         <p className="text-4xl mb-4">⚠️</p>
         <h1 className="text-xl font-bold text-gray-900 mb-2">エラーが発生しました</h1>
-        <p className="text-gray-500 text-sm mb-6">
+        <p className="text-gray-500 text-sm mb-2">
           システムの設定を確認中です。しばらくしてから再度お試しください。
         </p>
+        {error.digest && (
+          <p className="text-gray-400 text-xs mb-6 font-mono">
+            エラーコード: {error.digest}
+          </p>
+        )}
         <div className="flex gap-3 justify-center">
           <Button onClick={reset} variant="outline">
             再試行

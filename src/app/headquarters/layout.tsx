@@ -7,7 +7,12 @@ export default async function HeadquartersLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  let session;
+  try {
+    session = await auth();
+  } catch {
+    redirect("/login");
+  }
   if (!session || session.user.role !== "HEADQUARTERS") {
     redirect("/login");
   }

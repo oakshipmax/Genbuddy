@@ -30,7 +30,12 @@ function StatCard({ label, value, color, href }: StatCardProps) {
 }
 
 export default async function HeadquartersDashboardPage() {
-  const session = await auth();
+  let session;
+  try {
+    session = await auth();
+  } catch {
+    redirect("/login");
+  }
   if (!session || session.user.role !== "HEADQUARTERS") {
     redirect("/login");
   }
@@ -42,6 +47,7 @@ export default async function HeadquartersDashboardPage() {
   let stats = { pending: 0, assigned: 0, inProgress: 0, completedToday: 0, total: 0 };
   let recentCases: CaseWithHandyman[] = [];
   let dbError = false;
+  let dbErrorMessage = "";
 
   try {
     // count系は Promise.all でまとめて取得
@@ -67,6 +73,9 @@ export default async function HeadquartersDashboardPage() {
   } catch (error) {
     console.error("[Dashboard] DB query error:", error);
     dbError = true;
+    if (error instanceof Error) {
+      dbErrorMessage = error.message;
+    }
   }
 
   return (
@@ -89,8 +98,13 @@ export default async function HeadquartersDashboardPage() {
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-sm text-red-700">
           <p className="font-medium">データベースへの接続に失敗しました</p>
           <p className="mt-1 text-red-500">
-            しばらく待ってから再読み込みしてください。問題が続く場合はシステム管理者にお問い合わせください。
+            しばらく待ってから再読み込みしてください。問題が続く場合はAmplifyのDATABASE_URL環境変数とRDSのセキュリティグループを確認してください。
           </p>
+          {dbErrorMessage && (
+            <p className="mt-2 text-xs text-red-400 font-mono break-all">
+              {dbErrorMessage}
+            </p>
+          )}
         </div>
       )}
 
