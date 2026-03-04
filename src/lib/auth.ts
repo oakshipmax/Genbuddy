@@ -6,6 +6,27 @@ import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
 import authConfig from "./auth.config";
 
+/**
+ * AmplifyのAUTH_URL環境変数がlocalhostのままの場合のフォールバック。
+ * Auth.jsはAUTH_URLをリダイレクトURL構築に使うため、
+ * localhostのままだとエラー時に localhost:3000/login?error=... へリダイレクトされる。
+ *
+ * 【安全な理由】
+ * クッキー名は auth.config.ts で明示設定済み（NODE_ENVに依存）。
+ * AUTH_URLの値はクッキー名に影響しないため、このオーバーライドは安全。
+ * Edge runtime（ミドルウェア）ではこのコードは実行されないが、
+ * ミドルウェアはクッキー名を明示設定で読むため問題なし。
+ *
+ * 【恒久対処】AmplifyコンソールでAUTH_URLを削除または正しいURLに変更する。
+ */
+if (
+  process.env.NODE_ENV === "production" &&
+  process.env.NEXT_PUBLIC_APP_URL &&
+  (!process.env.AUTH_URL || process.env.AUTH_URL.includes("localhost"))
+) {
+  process.env.AUTH_URL = process.env.NEXT_PUBLIC_APP_URL;
+}
+
 // キーが設定済みのプロバイダーのみ追加（未設定時はスキップ）
 const providers: Provider[] = [];
 
