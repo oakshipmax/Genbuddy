@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
 import LINE from "next-auth/providers/line";
+import { createHmac } from "crypto"; // Node.js組み込み（authorize()はNode.jsのみで実行）
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@prisma/client";
 import authConfig from "./auth.config";
@@ -32,11 +33,18 @@ const providers: Provider[] = [];
 
 // 本部：Credentials + Cognito USER_PASSWORD_AUTH（カスタムフォーム用）
 // ※ Cognitoアプリクライアントで ALLOW_USER_PASSWORD_AUTH を有効化すること
-if (
-  process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID &&
-  process.env.COGNITO_CLIENT_SECRET &&
-  process.env.NEXT_PUBLIC_AWS_REGION
-) {
+const cognitoClientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID?.trim();
+const cognitoClientSecret = process.env.COGNITO_CLIENT_SECRET?.trim();
+const cognitoRegion = process.env.NEXT_PUBLIC_AWS_REGION?.trim();
+
+console.log("[Auth] Cognito env check:", {
+  hasClientId: !!cognitoClientId,
+  hasClientSecret: !!cognitoClientSecret,
+  hasRegion: !!cognitoRegion,
+  region: cognitoRegion ?? "not set",
+});
+
+if (cognitoClientId && cognitoClientSecret && cognitoRegion) {
   providers.push(
     Credentials({
       id: "cognito",
@@ -46,38 +54,28 @@ if (
         password: { label: "パスワード", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        const email = (credentials?.email as string | undefined)?.trim();
+        const password = credentials?.password as string | undefined;
 
-        const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!;
-        const clientSecret = process.env.COGNITO_CLIENT_SECRET!;
-        const region = process.env.NEXT_PUBLIC_AWS_REGION!;
-        const email = credentials.email as string;
-        const password = credentials.password as string;
+        console.log("[Cognito authorize] called. email:", email ? "set" : "empty");
 
-        // SECRET_HASH を計算（Web Crypto API 使用 → Edge/Node.js 両対応）
-        const encoder = new TextEncoder();
-        const key = await globalThis.crypto.subtle.importKey(
-          "raw",
-          encoder.encode(clientSecret),
-          { name: "HMAC", hash: "SHA-256" },
-          false,
-          ["sign"]
-        );
-        const signature = await globalThis.crypto.subtle.sign(
-          "HMAC",
-          key,
-          encoder.encode(email + clientId)
-        );
-        const secretHash = btoa(
-          Array.from(new Uint8Array(signature))
-            .map((b) => String.fromCharCode(b))
-            .join("")
-        );
+        if (!email || !password) {
+          console.warn("[Cognito authorize] Missing email or password");
+          return null;
+        }
 
         try {
+          // SECRET_HASH を計算（Node.js crypto モジュール使用）
+          // authorize() は Node.js ランタイムでのみ実行されるため安全
+          const secretHash = createHmac("SHA256", cognitoClientSecret)
+            .update(email + cognitoClientId)
+            .digest("base64");
+
+          console.log("[Cognito authorize] SECRET_HASH calculated. Calling InitiateAuth...");
+
           // Cognito InitiateAuth（USER_PASSWORD_AUTH フロー）
           const authRes = await fetch(
-            `https://cognito-idp.${region}.amazonaws.com/`,
+            `https://cognito-idp.${cognitoRegion}.amazonaws.com/`,
             {
               method: "POST",
               headers: {
@@ -87,7 +85,7 @@ if (
               },
               body: JSON.stringify({
                 AuthFlow: "USER_PASSWORD_AUTH",
-                ClientId: clientId,
+                ClientId: cognitoClientId,
                 AuthParameters: {
                   USERNAME: email,
                   PASSWORD: password,
@@ -99,17 +97,22 @@ if (
 
           if (!authRes.ok) {
             const err = await authRes.json().catch(() => ({}));
-            console.error("[Cognito] AuthFailed:", err);
+            console.error("[Cognito authorize] InitiateAuth failed. Status:", authRes.status, "Error:", JSON.stringify(err));
             return null;
           }
 
           const authData = await authRes.json();
           const accessToken = authData.AuthenticationResult?.AccessToken;
-          if (!accessToken) return null;
+          if (!accessToken) {
+            console.error("[Cognito authorize] No AccessToken in response");
+            return null;
+          }
+
+          console.log("[Cognito authorize] InitiateAuth success. Calling GetUser...");
 
           // GetUser でユーザー属性を取得
           const userRes = await fetch(
-            `https://cognito-idp.${region}.amazonaws.com/`,
+            `https://cognito-idp.${cognitoRegion}.amazonaws.com/`,
             {
               method: "POST",
               headers: {
@@ -121,7 +124,10 @@ if (
             }
           );
 
-          if (!userRes.ok) return null;
+          if (!userRes.ok) {
+            console.error("[Cognito authorize] GetUser failed. Status:", userRes.status);
+            return null;
+          }
 
           const userData = await userRes.json();
           const attrs = userData.UserAttributes as {
@@ -133,20 +139,26 @@ if (
           const userEmail = attrs.find((a) => a.Name === "email")?.Value;
           const name = attrs.find((a) => a.Name === "name")?.Value;
 
-          if (!sub) return null;
+          if (!sub) {
+            console.error("[Cognito authorize] No 'sub' in UserAttributes");
+            return null;
+          }
 
+          console.log("[Cognito authorize] Success. sub:", sub);
           return {
             id: sub,
             email: userEmail ?? email,
             name: name ?? "本部スタッフ",
           };
         } catch (error) {
-          console.error("[Cognito] Error:", error);
+          console.error("[Cognito authorize] Unexpected error:", error);
           return null;
         }
       },
     })
   );
+} else {
+  console.error("[Auth] Cognito provider NOT registered. Missing env vars.");
 }
 
 // 便利屋：LINEログイン
