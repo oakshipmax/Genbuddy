@@ -10,10 +10,16 @@ export default async function HeadquartersLayout({
   let session;
   try {
     session = await auth();
-  } catch {
+    console.log("[HQ Layout] auth() result:", {
+      hasSession: !!session,
+      role: session?.user?.role ?? "undefined",
+    });
+  } catch (error) {
+    console.error("[HQ Layout] auth() threw an error:", error);
     redirect("/login");
   }
   if (!session || session.user.role !== "HEADQUARTERS") {
+    console.warn("[HQ Layout] Access denied. Role:", session?.user?.role);
     redirect("/login");
   }
 

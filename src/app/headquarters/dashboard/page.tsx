@@ -33,21 +33,26 @@ export default async function HeadquartersDashboardPage() {
   let session;
   try {
     session = await auth();
-  } catch {
+    console.log("[HQ Dashboard] auth() ok. role:", session?.user?.role);
+  } catch (error) {
+    console.error("[HQ Dashboard] auth() threw:", error);
     redirect("/login");
   }
   if (!session || session.user.role !== "HEADQUARTERS") {
+    console.warn("[HQ Dashboard] Access denied. role:", session?.user?.role);
     redirect("/login");
   }
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  // DB接続エラー時はフォールバック表示
+  // DB接続エラー時はフォールバック表示（0件データで画面を表示する）
   let stats = { pending: 0, assigned: 0, inProgress: 0, completedToday: 0, total: 0 };
   let recentCases: CaseWithHandyman[] = [];
   let dbError = false;
   let dbErrorMessage = "";
+
+  console.log("[HQ Dashboard] Starting DB queries. DATABASE_URL set:", !!process.env.DATABASE_URL);
 
   try {
     // count系は Promise.all でまとめて取得
@@ -62,6 +67,7 @@ export default async function HeadquartersDashboardPage() {
         prisma.case.count({ where: { status: { not: "CANCELLED" } } }),
       ]);
     stats = { pending, assigned, inProgress, completedToday, total };
+    console.log("[HQ Dashboard] DB query success. stats:", stats);
 
     // findMany はリレーション include のため別クエリ（型推論を明確化）
     recentCases = await prisma.case.findMany({
@@ -70,11 +76,14 @@ export default async function HeadquartersDashboardPage() {
       where: { status: { not: "CANCELLED" } },
       include: { handyman: { select: { name: true } } },
     });
+    console.log("[HQ Dashboard] Recent cases count:", recentCases.length);
   } catch (error) {
-    console.error("[Dashboard] DB query error:", error);
+    console.error("[HQ Dashboard] DB query error:", error);
     dbError = true;
     if (error instanceof Error) {
       dbErrorMessage = error.message;
+      console.error("[HQ Dashboard] DB error message:", error.message);
+      console.error("[HQ Dashboard] DB error stack:", error.stack);
     }
   }
 
